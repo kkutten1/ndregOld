@@ -712,18 +712,20 @@ def affineToField(affine, size, spacing):
     """
     Generates displacement field with given size and spacing based on affine parameters.
     """
-    if len(size) != dimension: raise Exception("size must have length {0}.".format(dimension))
-    if len(spacing) != dimension: raise Exception("spacing must have length {0}.".format(dimension))
+    numParameters = len(affine)
+    numDimensions = 0.5*(-1 + math.sqrt(1+ 4*numParameters)) # dimension
+    if len(size) != numDimensions: raise Exception("size must have length {0}.".format(numDimensions))
+    if len(spacing) != numDimensions: raise Exception("spacing must have length {0}.".format(numDimensions))
+    if not isInteger(numDimensions): raise Exception("Must have len(inAffine) = n*n + n where n is some interger.")
+    numDimensions = int(numDimensions)
 
     # Set affine parameters
-    affineTransform = sitk.AffineTransform(dimension)
-    numParameters = len(affineTransform.GetParameters())
-    if len(affine) != numParameters: raise Exception("affine must have length {0}.".format(numParameters))
-    affineTransform = sitk.AffineTransform(dimension)
+    affineTransform = sitk.AffineTransform(numDimensions)
     affineTransform.SetParameters(affine)
 
     # Convert affine transform to field
-    return  sitk.TransformToDisplacementFieldFilter().Execute(affineTransform, vectorType, size, zeroOrigin, spacing, identityDirection)
+    direction = np.eye(numDimensions).flatten().tolist()
+    return  sitk.TransformToDisplacementFieldFilter().Execute(affineTransform, vectorType, size, [0.0]*numDimensions, spacing, direction)
 
 def imgApplyField(img, field, useNearest=False, size=[], spacing=[],defaultValue=0):
     """
@@ -1605,6 +1607,10 @@ def lmkApplyField(inLmk, field, spacing=[1,1,1]):
         
     return landmarks(outLmkList, inLmk.spacing)
 
+def lmkApplyAffine(lmk, affine):    
+    # Apply affine to landmarks
+    return lmk.Affine(affine)
+
 def vizUrl(tokenList, channelList=[], serverList=[], userTokenList=[], use4Panel=True):
     if isinstance(tokenList, basestring): tokenList = [tokenList]
     numTokens = len(tokenList)
@@ -1656,3 +1662,65 @@ def vizUrl(tokenList, channelList=[], serverList=[], userTokenList=[], use4Panel
     ndvizUrl = ndvizBaseUrl+ndvizString
 
     return ndvizUrl
+
+
+def fieldToMap(field):
+    """
+    Convert input displacement field into CIS compatable map
+    """
+
+    spacing = field.GetSpacing()
+    idMap = mapCreateIdentity(field.GetSize())
+    idMap.CopyInformation(field)
+
+    outMapComponentList = []
+    for i in range(dimension):
+        idMapComponent = sitk.VectorIndexSelectionCastImageFilter().Execute(idMap, i, sitk.sitkFloat32)
+        fieldComponent = sitk.VectorIndexSelectionCastImageFilter().Execute(field, i, sitk.sitkFloat32)
+        outMapComponent = idMapComponent + (fieldComponent / spacing[i])
+        outMapComponentList += [outMapComponent]
+
+    outMap = sitk.ComposeImageFilter().Execute(outMapComponentList)
+
+    return outMap
+
+"""
+def mapToField(inPath, outPath, inSpacing=[]):
+    
+    #Convert input displacement field into CIS compatible map.
+    #The spacing metadata of CIS maps is often incorrect.
+    #Thus the user can set it using the inSpacing parameter.
+    
+    inMap = imgRead(inPath)
+    inSize = inMap.GetSize()
+    if inSpacing == []:
+        inSpacing = inMap.GetSpacing()
+    else:
+        if (not isIterable(inSpacing)) or (len(inSpacing) != dimension): raise Exception("inSspacing must be a list of length "+str(dimension) + ".")
+        inMap.SetSpacing(inSpacing)
+
+    idMap = mapCreateIdentity(inSize)
+    idMap.CopyInformation(inMap)
+
+    outFieldComponentList = []
+    for i in range(dimension):
+        idMapComponent = sitk.VectorIndexSelectionCastImageFilter().Execute(idMap, i, vectorComponentType)
+        inMapComponent = sitk.VectorIndexSelectionCastImageFilter().Execute(inMap, i, vectorComponentType)
+        outFieldComponent = (inMapComponent - idMapComponent) * inSpacing[i]
+        outFieldComponentList += [outFieldComponent]
+    
+    outField = sitk.ComposeImageFilter().Execute(outFieldComponentList)
+
+    # Write output field
+    (outPath, outDirPath) = getOutPaths("", outPath)    
+    imgWrite(outField, outPath)
+    
+    return outPath
+"""
+
+def mapCreateIdentity(size):
+    """
+    Generates an identity map of given size
+    """
+    spacing = [1,1,1]
+    return sitk.PhysicalPointImageSource().Execute(vectorType, size, zeroOrigin, spacing, identityDirection)

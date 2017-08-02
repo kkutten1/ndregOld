@@ -21,6 +21,7 @@
 #include "itkCheckerBoardImageFilter.h"
 #include "itkMetamorphosisImageRegistrationMethodv4.h"
 #include "itkWrapExtrapolateImageFunction.h"
+// #include <google/profiler.h>
 using namespace std;
 
 typedef itk::CommandLineArgumentParser  ParserType;
@@ -330,7 +331,9 @@ int Metamorphosis(typename TImage::Pointer fixedImage, typename ParserType::Poin
   clock.Start();
   try
   {
+    //ProfilerStart("/tmp/profile");
     metamorphosis->Update();
+    //ProfilerStop();
   }
   catch(itk::ExceptionObject& exceptionObject)
   {
@@ -375,7 +378,7 @@ int Metamorphosis(typename TImage::Pointer fixedImage, typename ParserType::Poin
   adder->Update();
 
   // Limit intensity of I(1) to intensity range of ouput image type
-  typedef unsigned char   OutputPixelType;
+  typedef unsigned short   OutputPixelType;
   typedef itk::Image<OutputPixelType,ImageDimension>  OutputImageType;
 
   typedef itk::ClampImageFilter<ImageType, OutputImageType> ClamperType;
@@ -418,7 +421,7 @@ int Metamorphosis(typename TImage::Pointer fixedImage, typename ParserType::Poin
     typedef itk::WrapExtrapolateImageFunction<MaskImageType, ScalarType> MaskExtrapolatorType;
     typename MaskExtrapolatorType::Pointer maskExtrapolator = MaskExtrapolatorType::New();    
 
-    typedef itk::ResampleImageFilter<MaskImageType,MaskImageType, ScalarType>   MaskResamplerType;
+    typedef itk::ResampleImageFilter<MaskImageType,OutputImageType, ScalarType>   MaskResamplerType;
     typename MaskResamplerType::Pointer maskResampler = MaskResamplerType::New();
     maskResampler->SetInput(inputMaskImage);
     maskResampler->SetTransform(transform); // phi_{10}

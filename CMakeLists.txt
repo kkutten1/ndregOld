@@ -1,7 +1,17 @@
 cmake_minimum_required(VERSION 2.6)
+
 project(ndreg)
 
 set(PACKAGE_VERSION "0.0.1")
+
+#option(EnableProfiling "Enable profiling with pprof" OFF)
+#if(EnableProfiling)
+#  set(FLAG_LIST "CMAKE_CXX_FLAGS;CMAKE_EXE_LINKER_FLAGS;CMAKE_SHARED_LINKER_FLAGS")
+#  foreach(FLAG ${FLAG_LIST})
+#    get_property(helpString CACHE ${FLAG} PROPERTY HELPSTRING)
+#    set(${FLAG}  "${${FLAG}} -pg" CACHE STRING "${helpString}" FORCE)
+#  endforeach()
+#endif()
 
 # Build metamorphosis binary
 find_package(ITK)
@@ -34,6 +44,7 @@ endforeach()
 
 # Build ndreg egg
 include(${ITK_USE_FILE})
+
 add_subdirectory(ndreg)
 
 set(TIMESTAMP "${CMAKE_CURRENT_BINARY_DIR}/build/timestamp")
@@ -42,6 +53,7 @@ add_custom_command(OUTPUT ${TIMESTAMP}
     COMMAND ${PYTHON} ${SETUP_PY} build                 # Make the egg
     COMMAND ${CMAKE_COMMAND} -E touch ${TIMESTAMP}      # Generate timestamp file
     DEPENDS ${BIN_PY_PATH_LIST} metamorphosis)
+
 
 add_custom_target(ndreg ALL DEPENDS ${TIMESTAMP})
 

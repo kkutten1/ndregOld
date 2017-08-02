@@ -4,7 +4,7 @@ from __future__ import print_function
 import math, copy, csv, sys
 from numpy import mat, multiply
 
-class landmarks:
+class landmarks(object):
     """
     The landmarks class can be used to read, write and manipulate landmarks.  For example...
         lmk = landmarks()                                       # Construct
@@ -76,14 +76,12 @@ class landmarks:
         Returns list of lanmarks in the format
             [[x1,y1,...],...,[xN,yN,...]]
         """
-        if labelList==[]:
-            return self.landmarkList[:]
-        else:
-            outPointList = []
-            for label in labelList:
-                for landmark in self.landmarkList:
-                    if landmark[0] == label: outPointList.append(landmark[1:])
-            return outPointList
+        if labelList==[]: labelList = self.GetLabels()
+        outPointList = []
+        for label in labelList:
+            for landmark in self.landmarkList:
+                if landmark[0] == label: outPointList.append(landmark[1:])
+        return outPointList
 
     
     def SetLabels(self,labelList):
@@ -117,6 +115,12 @@ class landmarks:
         Returns the number of landmarks.
         """
         return len(self.landmarkList)
+
+    def GetNumberOfPoints(self):
+        """
+        Returns the number of points
+        """
+        return self.GetNumberOfLandmarks()
     
     def GetSize(self):
         """
@@ -258,6 +262,8 @@ class landmarks:
         return distanceList
 
     def Affine(self, affine):
+        print(type(self))
+        ### TODO generalize to other dimensions
         if (not(type(affine)) is list) or (len(affine) != 12): raise Exception("affine must be a list of length 12.")
         lmkList = []
         labelList = self.GetLabels()
@@ -269,7 +275,7 @@ class landmarks:
             x1 = A*x0 + b
             lmk = [labelList[i]] +  x1.flatten().tolist()[0]
             lmkList.append(lmk)
-        return landmarks(lmkList, self.spacing)
+        return landmarks(lmkList, spacing=self.spacing)
 
     def Flip(self, size):
         """
@@ -313,3 +319,127 @@ class landmarks:
 
         return landmarks(outLandmarkList, self.spacing)
 
+
+
+
+class surface(landmarks):
+    def __init__(self, inputPoints=[[0,0,0]], spacing=[1.0,1.0,1.0], inputConnections=None):
+        self.numSurfaces = 1
+        self.numPoints = 1
+        self.numPolygons = 0
+        self.numConnections = 0
+        self.connectionList = []
+        if type(inputPoints) is list:
+            inputLandmarks = [] 
+            for (i,point) in enumerate(inputPoints):
+                landmark = [str(i)] + point
+                inputLandmarks+=[landmark]
+            landmarks.__init__(self, inputLandmarks)
+        elif type(inputPoints) is str:
+            self.Read(inputPoints, spacing)
+
+
+    def Write(self, path):
+        """
+        Writes surface to given path using BYU format
+        """
+        # Write metadata
+        surfaceFile = open(path,"w")
+        print("{0} {1} {2} {3}".format(self.numSurfaces, self.GetNumberOfPoints(), self.numPolygons, self.GetNumberOfConnections()), file=surfaceFile)
+
+        for i in range(self.numSurfaces):
+            print("{0} {1}".format(self.surfaceConnectionsStart[i], self.surfaceConnectionsEnd[i]),file=surfaceFile)
+
+        # Write points
+        pointList = self.GetPoints()
+        for point in pointList:
+            print(" ".join(map(str,point)),file=surfaceFile)
+        
+        # Write connections
+        for connection in self.connectionList[:]:
+            print(" ".join(map(str,connection[:-1]))+" -"+str(connection[-1]), file=surfaceFile)
+
+        surfaceFile.close()
+
+    def Read(self, path, spacing=[1.0,1.0,1.0]):
+        """
+        Reads surface from given path
+        It accepts surfaces in the following format
+        1. BYU format which has extension .byu
+
+           <numSurfaces> <numPoints> <numPolygons> <numConnections>
+           1 <numPointsInSurface1>
+           2 <numPointsInSurface2>
+           ...
+           <numSurfaces> <numPointsInSurface<numSurfaces>>
+           x1 y1 z1
+           x2 y2 z2
+           ...
+           x<numPoints> y<numPoints> z<numPoints>
+        """
+        dimension = 3
+        self.spacing = spacing
+        surfaceFile = open(path, "r")
+        lineList = []
+        for line in surfaceFile.readlines():
+            if line.strip() != "": lineList.append(line.strip())
+        surfaceFile.close()
+
+        # Read Metadata
+        line1 = lineList.pop(0).split()
+        [self.numSurfaces, self.numPoints, self.numPolygons, self.numConnections] = map(int, line1[0:4])
+
+        self.surfaceConnectionsStart = []
+        self.surfaceConnectionsEnd = []
+        for i in range(self.numSurfaces): 
+            [start, end] = lineList.pop(0).split()
+            self.surfaceConnectionsStart.append(int(start))
+            self.surfaceConnectionsEnd.append(int(end))
+
+        # Read Points
+        pointData = []
+        while len(pointData) < self.numPoints*dimension:
+            line = lineList.pop(0)
+            pointData+=map(float,line.split())
+                    
+        landmarkList = []
+        for i in range(self.numPoints):
+            point = pointData[i*dimension:(i+1)*dimension]
+            label = str(i)
+            landmark = [label] + point
+            landmarkList.append(landmark)
+
+        self.SetLandmarks(landmarkList)
+
+        # Read Connections
+        connectionData = []
+        for line in lineList: connectionData += map(int,line.split())
+
+        self.connectionList = []
+        connection = []
+        for value in connectionData:
+            if value > 0:
+                connection.append(value)
+            else:
+                connection.append(-value)
+                self.connectionList.append(connection)
+                connection=[]
+
+        
+    def GetNumberOfConnections(self):
+        return len(self.connectionList)
+
+    def Affine(self, affine):
+        print(type(self))
+        ### TODO generalize to other dimensions
+        if (not(type(affine)) is list) or (len(affine) != 12): raise Exception("affine must be a list of length 12.")
+        pointList = []
+        for i in range(self.GetNumberOfPoints()):
+            x0 = mat(self.landmarkList[i][1:]).reshape(3,1)
+            A = mat(affine[:9]).reshape(3,3)
+            b = mat(affine[9:]).reshape(3,1)
+            #x1 = A.I*(x0 - b)
+            x1 = A*x0 + b
+            point = x1.flatten().tolist()[0]
+            pointList.append(point)
+        return surface(pointList, spacing=self.spacing)
